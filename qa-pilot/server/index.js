@@ -184,6 +184,33 @@ app.get('/api/debug/hf-echo', async (req, res) => {
 });
 
 /* -------- AI test generation (HF) -------- */
+// Debug endpoint to see raw HF output
+app.get('/api/debug/hf-echo', async (req, res) => {
+  const prdId = req.query.prdId;
+  const baseUrl = req.query.baseUrl || '';
+  const prdPath = path.join(TMP_DIR, `prd-${prdId}.txt`);
+
+  let prdText = '';
+  try {
+    prdText = fs.readFileSync(prdPath, 'utf8');
+  } catch (e) {
+    return res.status(404).json({ error: 'PRD not found' });
+  }
+
+  const prompt = `
+Return ONLY valid JSON: {"tests":[...]}.
+Each test:
+{"id":"TC-001","title":"...","priority":"P1","steps":["Go to ${baseUrl}"],"expected":["Text '...' visible"]}
+
+<PRD>
+${prdText}
+</PRD>
+`;
+
+  const raw = await callHF(prompt);
+  res.send(raw);  // ← don’t parse, just return model text
+});
+
 // -------- AI test generation (HF, robust) --------
 app.post('/api/projects/:id/generate-tests', async (req, res) => {
   try {
