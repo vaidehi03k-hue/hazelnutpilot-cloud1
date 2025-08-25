@@ -15,6 +15,12 @@ const app = express();
 app.use(cors());
 app.use(express.json({ limit: '20mb' }));
 
+const distPath = path.join(__dirname, '../ui/dist');
+app.use(express.static(distPath));                        // serve built assets
+app.get('/', (_req, res) => res.sendFile(path.join(distPath, 'index.html')));
+// (optional) deep link support for your viewer route
+app.get('/viewer/*', (_req, res) => res.sendFile(path.join(distPath, 'index.html')));
+
 // ensure folders
 ['uploads','tmp','runs'].forEach(d => {
   const p = path.join(__dirname, d);
