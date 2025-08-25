@@ -3,7 +3,7 @@ import multer from 'multer';
 import cors from 'cors';
 import fs from 'fs';
 import path from 'path';
-import { parseDocx } from 'docx-parser';
+import mammoth from "mammoth";
 import { runWebTests } from './runWebTests.js';
 import { runApiTests } from './runApiTests.js';
 import { v4 as uuidv4 } from 'uuid';
@@ -28,17 +28,27 @@ const upload = multer({ dest: path.join(__dirname, 'uploads') });
 
 async function extractText(filePath, originalName) {
   const ext = (path.extname(originalName || filePath) || '').toLowerCase();
-  if (ext === '.txt' || ext === '.md') return fs.readFileSync(filePath, 'utf8');
-  if (ext === '.pdf') {
-   if (filePath.endsWith(".pdf")) {
-      const pdfParse = (await import('pdf-parse')).default;
-      const dataBuffer = fs.readFileSync(filePath);
-      const pdfData = await pdfParse(dataBuffer);
-  text = pdfData.text;
-}
-    return data.text;
+
+  // .txt / .md
+  if (ext === '.txt' || ext === '.md') {
+    return fs.readFileSync(filePath, 'utf8');
   }
-  if (ext === '.docx') return await parseDocx(filePath);
+
+  // .pdf  (ESM-friendly dynamic import)
+  if (ext === '.pdf') {
+    const pdfParse = (await import("pdf-parse")).default;
+    const dataBuffer = fs.readFileSync(filePath);
+    const pdfData = await pdfParse(dataBuffer);
+    return pdfData.text || '';
+  }
+
+  // .docx  (use mammoth)
+  if (ext === '.docx') {
+    const result = await mammoth.extractRawText({ path: filePath });
+    return result.value || '';
+  }
+
+  // fallback
   return fs.readFileSync(filePath, 'utf8');
 }
 
