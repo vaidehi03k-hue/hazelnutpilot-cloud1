@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import api from '../api'
+import { api, assetUrl } from '../api'
+
 
 export default function Viewer(){
   const { token } = useParams()
