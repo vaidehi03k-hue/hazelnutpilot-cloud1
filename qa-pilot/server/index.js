@@ -169,53 +169,87 @@ app.post('/api/projects/:id/upload-prd', upload.single('file'), async (req, res)
 });
 
 /* -------- AI test generation (HF) -------- */
+// -------- AI test generation (HF, robust) --------
 app.post('/api/projects/:id/generate-tests', async (req, res) => {
   try {
-    const { prdId, baseUrl } = req.body;
+    const { prdId, baseUrl: baseUrlFromUI } = req.body;
+
+    // 1) Load PRD text
     const prdPath = path.join(TMP_DIR, `prd-${prdId}.txt`);
+    if (!fs.existsSync(prdPath)) {
+      console.error('[GEN-TESTS] Missing PRD file at', prdPath);
+      return res.status(400).json({ error: 'PRD not found. Upload PRD first.' });
+    }
     const prdText = fs.readFileSync(prdPath, 'utf8');
 
-    const prompt = `
-You are a senior QA. From the PRD between <PRD>...</PRD> create a JSON object {"tests":[...]} of atomic end-to-end WEB test cases for Playwright.
+    // 2) Find baseUrl
+    let baseUrl = (baseUrlFromUI || '').trim();
+    if (!baseUrl) {
+      const m = prdText.match(/Base\s*URL:\s*(\S+)/i);
+      if (m) baseUrl = m[1];
+    }
+    if (!baseUrl) baseUrl = 'https://example.com';
 
-Each test example:
-{
- "id":"TC-XXX",
- "title":"short title",
- "priority":"P1|P2|P3",
- "steps":[ "Go to ${baseUrl}", "Click 'Login'", "Fill 'Email' with 'user@example.com'" ],
- "expected":[ "URL contains /dashboard", "Text 'Welcome' visible" ]
-}
-
-Rules:
-- Return ONLY a single valid JSON object with key "tests". No extra text.
-- Steps must be human actions only: Go to, Click 'Text', Fill 'Label' with 'value', Select 'Option' in 'Label'.
-- Expected entries are assertions like: "URL contains ...", "Text '...' visible".
-
-<PRD>
-${prdText}
-</PRD>
+    // 3) Strong JSON-only prompt (works well on Mistral Instruct)
+    const rules = `
+You are a senior QA. Output ONE valid JSON object ONLY (no prose, no backticks).
+Schema exactly: {"tests":[{"id":"TC-001","title":"...","priority":"P1|P2|P3","steps":["Go to ${baseUrl}", "..."],"expected":["Text '...' visible","URL contains ..."]}]}
+Constraints:
+- 3–8 concise E2E tests for Playwright.
+- Steps ONLY from: Go to, Click 'Text', Fill 'Label' with 'value', Select 'Option' in 'Label'.
+- Expected ONLY assertions: "URL contains ...", "Text '...' visible".
+- Do not include any explanation or markdown code fences.
 `.trim();
 
-    const raw = await callHF(prompt);
+    const prompt = `${rules}\n<PRD>\n${prdText}\n</PRD>`;
 
-    // Robust JSON extraction
-    const extractJson = (s) => {
+    // 4) Call HF (twice if needed)
+    function stripFences(s='') {
+      // remove ```json ... ``` and stray leading/trailing non-JSON
+      return s.replace(/```[\s\S]*?```/g, '').trim();
+    }
+    function extractJson(s='') {
+      s = stripFences(s);
       const a = s.indexOf('{'); const b = s.lastIndexOf('}');
-      if (a >= 0 && b > a) { try { return JSON.parse(s.slice(a, b + 1)); } catch {} }
+      if (a >= 0 && b > a) {
+        const slice = s.slice(a, b + 1);
+        try { return JSON.parse(slice); } catch {}
+      }
       return null;
-    };
+    }
 
-    const parsed = extractJson(raw) || { tests: [] };
-    const tests = Array.isArray(parsed.tests) ? parsed.tests : [];
+    let raw = await callHF(prompt);
+    let parsed = extractJson(raw);
 
-    res.json({ tests });
+    if (!parsed || !Array.isArray(parsed.tests) || parsed.tests.length === 0) {
+      console.warn('[GEN-TESTS] First parse empty. Raw head:', (raw || '').slice(0, 200));
+      const prompt2 = `${rules}\nReturn only JSON. If unsure, still output at least 3 tests grounded in the PRD.\n<PRD>\n${prdText}\n</PRD>`;
+      raw = await callHF(prompt2);
+      parsed = extractJson(raw);
+    }
+
+    if (!parsed || !Array.isArray(parsed.tests)) {
+      console.error('[GEN-TESTS] Model returned no parseable JSON. Raw head:', (raw || '').slice(0, 400));
+      return res.json({ tests: [] });
+    }
+
+    // 5) Minimal sanitize
+    const tests = parsed.tests
+      .filter(t => t && Array.isArray(t.steps) && Array.isArray(t.expected))
+      .map((t, i) => ({
+        id: t.id || `TC-${String(i + 1).padStart(3, '0')}`,
+        title: t.title || `Test ${i + 1}`,
+        priority: ['P1','P2','P3'].includes(t.priority) ? t.priority : 'P2',
+        steps: t.steps,
+        expected: t.expected
+      }));
+
+    return res.json({ tests });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'Test generation failed' });
   }
 });
-
 /* -------- Import "recorded flow" from Chrome DevTools -------- */
 app.post('/api/projects/:id/import-recorder', async (req, res) => {
   try {
