@@ -31,7 +31,7 @@ async function extractText(filePath, originalName) {
   if (ext === '.txt' || ext === '.md') return fs.readFileSync(filePath, 'utf8');
   if (ext === '.pdf') {
    if (filePath.endsWith(".pdf")) {
-      const pdfParse = require("pdf-parse"); // require here
+      const pdfParse = (await import('pdf-parse')).default;
       const dataBuffer = fs.readFileSync(filePath);
       const pdfData = await pdfParse(dataBuffer);
   text = pdfData.text;
