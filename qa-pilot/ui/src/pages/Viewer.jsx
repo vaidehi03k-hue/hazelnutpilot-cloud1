@@ -31,7 +31,7 @@ export default function Viewer(){
                 <td className="text-rose-600">{r.failed}</td>
                 <td>{r.total}</td>
                 <td>{new Date(r.startedAt).toLocaleString()}</td>
-                <td><a className="text-blue-600" href={`http://localhost:4000${r.excelPath}`} target="_blank">Issues.xlsx</a> · <a className="text-blue-600" href={`http://localhost:4000${r.runDir}`} target="_blank">Folder</a></td>
+                <td><a className="text-blue-600" href={assetUrl(r.excelPath)} target="_blank" rel="noreferrer">Issues.xlsx</a> · <a className="text-blue-600" href={assetUrl(r.runDir)} target="_blank" rel="noreferrer">Folder</a></td>
               </tr>
             ))}
           </tbody>
