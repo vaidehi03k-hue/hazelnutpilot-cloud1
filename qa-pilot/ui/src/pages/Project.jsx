@@ -2,7 +2,6 @@ import React, { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { api, assetUrl } from "../api";
-import api from '../api'
 
 export default function Project(){
   const { id } = useParams()
