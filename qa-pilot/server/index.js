@@ -11,11 +11,11 @@ import { v4 as uuidv4 } from 'uuid';
 import db from './db/db.js';
 import { fileURLToPath } from 'url';
 
-// -------- AI (Hugging Face Inference API) --------
+// -------- AI (mistralai/Mistral-7B-Instruct-v0.3 Inference API) --------
 // Read env/secret at runtime so redeploys pick up changes reliably.
 function readHFModel() {
   // You can change this default to 'mistralai/Mistral-7B-Instruct-v0.3' if you prefer
-  return (process.env.HF_MODEL || 'HuggingFaceH4/zephyr-7b-beta').trim();
+  return (process.env.HF_MODEL || 'mistralai/Mistral-7B-Instruct-v0.3').trim();
 }
 function readHFToken() {
   const envTok = (process.env.HF_TOKEN || '').trim();
