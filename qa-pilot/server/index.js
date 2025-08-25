@@ -12,30 +12,67 @@ import db from './db/db.js';
 import { fileURLToPath } from 'url';
 
 // -------- AI (Hugging Face Inference API) --------
-const HF_MODEL = process.env.HF_MODEL || 'HuggingFaceH4/zephyr-7b-beta';
-const HF_TOKEN = process.env.HF_TOKEN || '';
+// Read env/secret at runtime so redeploys pick up changes reliably.
+function readHFModel() {
+  // You can change this default to 'mistralai/Mistral-7B-Instruct-v0.3' if you prefer
+  return (process.env.HF_MODEL || 'HuggingFaceH4/zephyr-7b-beta').trim();
+}
+function readHFToken() {
+  const envTok = (process.env.HF_TOKEN || '').trim();
+  if (envTok) return envTok;
+  // Secret File fallback (Render → Settings → Secret Files → name: hf_token)
+  try {
+    const p = '/etc/secrets/hf_token';
+    if (fs.existsSync(p)) return fs.readFileSync(p, 'utf8').trim();
+  } catch {}
+  return '';
+}
 
 async function callHF(prompt) {
-  if (!HF_TOKEN) return '';
-  const res = await fetch(`https://api-inference.huggingface.co/models/${HF_MODEL}`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${HF_TOKEN}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      inputs: prompt,
-      parameters: { max_new_tokens: 800, temperature: 0.2 },
-      options: { wait_for_model: true }
-    })
-  }).catch(() => null);
+  const token = readHFToken();
+  const model = readHFModel();
 
-  if (!res) return '';
-  const data = await res.json();
-  if (typeof data === 'string') return data;
-  if (Array.isArray(data) && data[0]?.generated_text) return data[0].generated_text;
-  if (data?.generated_text) return data.generated_text;
-  try { return JSON.stringify(data); } catch { return ''; }
+  if (!token) {
+    console.error('[HF] Missing token (HF_TOKEN env and /etc/secrets/hf_token both empty)');
+    return '';
+  }
+
+  let res;
+  try {
+    res = await fetch(`https://api-inference.huggingface.co/models/${model}`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        inputs: prompt,
+        parameters: { max_new_tokens: 900, temperature: 0.1, return_full_text: false },
+        options: { wait_for_model: true }
+      })
+    });
+  } catch (e) {
+    console.error('[HF] fetch error:', e?.message || e);
+    return '';
+  }
+
+  const body = await res.text();
+  if (!res.ok) {
+    console.error('[HF] status:', res.status, res.statusText);
+    console.error('[HF] body  :', body.slice(0, 500));
+    return '';
+  }
+
+  // Try to interpret common HF response shapes
+  try {
+    const data = JSON.parse(body);
+    if (Array.isArray(data) && data[0]?.generated_text) return data[0].generated_text;
+    if (data?.generated_text) return data.generated_text;
+    if (typeof data === 'string') return data;
+    return body;
+  } catch {
+    return body;
+  }
 }
 
 // -------- Paths / App bootstrap --------
@@ -44,11 +81,10 @@ const app = express();
 app.use(cors());
 app.use(express.json({ limit: '20mb' }));
 
-// Writable directories (use /tmp by default; we also keep project-local for compatibility)
+// Writable directories (container-safe)
 const RUNS_DIR   = process.env.RUNS_DIR   || path.join(__dirname, 'runs');
 const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(__dirname, 'uploads');
 const TMP_DIR    = process.env.TMP_DIR    || path.join(__dirname, 'tmp');
-
 [RUNS_DIR, UPLOAD_DIR, TMP_DIR].forEach(p => { if (!fs.existsSync(p)) fs.mkdirSync(p, { recursive: true }); });
 
 // Serve built UI
@@ -86,8 +122,13 @@ async function extractText(filePath, originalName) {
   return fs.readFileSync(filePath, 'utf8');
 }
 
-// Quick health
-app.get('/api/health', (_req, res) => res.json({ ok: true, model: HF_MODEL, hasToken: !!HF_TOKEN }));
+// Health: shows exactly what the running container can see *now*
+app.get('/api/health', (_req, res) => {
+  const model = readHFModel();
+  const hasToken = !!readHFToken();
+  console.log('[HEALTH] model:', model, 'tokenLen:', hasToken ? readHFToken().length : 0);
+  res.json({ ok: true, model, hasToken });
+});
 
 /* ---------------- Projects ---------------- */
 app.post('/api/projects', (req, res) => {
@@ -218,7 +259,7 @@ app.post('/api/projects/:id/run-web', async (req, res) => {
 
 app.post('/api/projects/:id/run-api', async (req, res) => {
   try {
-    const result = await runApiTests(req.body); // { apiTests:[...] }
+    const result = await runApiTests(req.body); // { apiTests:[... ] }
     res.json(result);
   } catch(e) {
     console.error(e);
