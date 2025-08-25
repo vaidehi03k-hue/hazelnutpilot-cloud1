@@ -167,6 +167,21 @@ app.post('/api/projects/:id/upload-prd', upload.single('file'), async (req, res)
     res.status(500).json({ error: 'Failed to parse PRD' });
   }
 });
+// DEBUG: peek at raw HF output for a given PRD (do NOT keep for production)
+app.get('/api/debug/hf-echo', async (req, res) => {
+  try {
+    const { prdId, baseUrl = 'https://example.com' } = req.query;
+    const p = path.join(TMP_DIR, `prd-${prdId}.txt`);
+    if (!fs.existsSync(p)) return res.status(400).json({ error: 'No PRD' });
+    const prd = fs.readFileSync(p, 'utf8');
+
+    const rules = `You are a JSON bot. Output ONE valid JSON object with key "tests". No prose.`;
+    const raw = await callHF(`${rules}\n<PRD>\n${prd}\n</PRD>`);
+    res.type('text/plain').send(raw || '(empty)');
+  } catch (e) {
+    res.status(500).send(String(e?.message || e));
+  }
+});
 
 /* -------- AI test generation (HF) -------- */
 // -------- AI test generation (HF, robust) --------
