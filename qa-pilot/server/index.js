@@ -11,8 +11,8 @@ import { v4 as uuidv4 } from 'uuid';
 import db from './db/db.js';
 import { fileURLToPath } from 'url';
 
-// -------- AI (OpenAI GPT-4o-mini) --------
-async function callAI(prompt) {
+/* ---------------- OpenAI (GPT-4o-mini) ---------------- */
+async function callAIJson(prompt) {
   const key = (process.env.OPENAI_API_KEY || '').trim();
   if (!key) {
     console.error('[AI] Missing OPENAI_API_KEY');
@@ -29,9 +29,18 @@ async function callAI(prompt) {
       },
       body: JSON.stringify({
         model: "gpt-4o-mini",
-        messages: [{ role: "user", content: prompt }],
+        // System message + user prompt; JSON MODE forces valid JSON output
+        messages: [
+          {
+            role: "system",
+            content:
+              "You are a strict JSON generator. Always return a single JSON object and nothing else."
+          },
+          { role: "user", content: prompt }
+        ],
         temperature: 0.2,
-        max_tokens: 800
+        max_tokens: 900,
+        response_format: { type: "json_object" } // <<< forces valid JSON
       })
     });
   } catch (e) {
@@ -39,17 +48,22 @@ async function callAI(prompt) {
     return '';
   }
 
+  const body = await res.text();
   if (!res.ok) {
-    const body = await res.text();
-    console.error('[AI] status:', res.status, res.statusText, body.slice(0, 200));
+    console.error('[AI] status:', res.status, res.statusText, 'body:', body.slice(0, 300));
     return '';
   }
 
-  const data = await res.json();
-  return data.choices?.[0]?.message?.content || '';
+  try {
+    const data = JSON.parse(body);
+    return data.choices?.[0]?.message?.content || '';
+  } catch (e) {
+    console.error('[AI] parse error:', e?.message || e);
+    return '';
+  }
 }
 
-// -------- Paths / App bootstrap --------
+/* ---------------- App bootstrap ---------------- */
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 app.use(cors());
@@ -60,19 +74,17 @@ const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(__dirname, 'uploads');
 const TMP_DIR    = process.env.TMP_DIR    || path.join(__dirname, 'tmp');
 [RUNS_DIR, UPLOAD_DIR, TMP_DIR].forEach(p => { if (!fs.existsSync(p)) fs.mkdirSync(p, { recursive: true }); });
 
-// Serve built UI
+/* ---------------- Serve UI & artifacts ---------------- */
 const distPath = path.join(__dirname, '../ui/dist');
 app.use(express.static(distPath));
 app.get('/', (_req, res) => res.sendFile(path.join(distPath, 'index.html')));
 app.get('/viewer/*', (_req, res) => res.sendFile(path.join(distPath, 'index.html')));
-
-// Serve artifacts
 app.use('/runs', express.static(RUNS_DIR));
 
-// Multer upload
+/* ---------------- Uploads ---------------- */
 const upload = multer({ dest: UPLOAD_DIR });
 
-// -------- Helpers --------
+/* ---------------- Helpers ---------------- */
 async function extractText(filePath, originalName) {
   const ext = (path.extname(originalName || filePath) || '').toLowerCase();
 
@@ -95,7 +107,7 @@ async function extractText(filePath, originalName) {
   return fs.readFileSync(filePath, 'utf8');
 }
 
-// Quick health
+/* ---------------- Health ---------------- */
 app.get('/api/health', (_req, res) => {
   const hasKey = !!(process.env.OPENAI_API_KEY || '').trim();
   res.json({ ok: true, model: "gpt-4o-mini", hasKey });
@@ -124,13 +136,12 @@ app.get('/api/projects/:id', (req, res) => {
   res.json(p);
 });
 
-/* -------- PRD upload -------- */
+/* ---------------- PRD upload ---------------- */
 app.post('/api/projects/:id/upload-prd', upload.single('file'), async (req, res) => {
   try {
     const text = await extractText(req.file.path, req.file.originalname);
     const prdId = uuidv4();
-    const out = path.join(TMP_DIR, `prd-${prdId}.txt`);
-    fs.writeFileSync(out, text, 'utf8');
+    fs.writeFileSync(path.join(TMP_DIR, `prd-${prdId}.txt`), text, 'utf8');
     res.json({ prdId, chars: text.length });
   } catch (e) {
     console.error(e);
@@ -138,10 +149,11 @@ app.post('/api/projects/:id/upload-prd', upload.single('file'), async (req, res)
   }
 });
 
-/* -------- AI test generation -------- */
+/* ---------------- AI test generation ---------------- */
 app.post('/api/projects/:id/generate-tests', async (req, res) => {
   try {
     const { prdId, baseUrl: baseUrlFromUI } = req.body;
+
     const prdPath = path.join(TMP_DIR, `prd-${prdId}.txt`);
     if (!fs.existsSync(prdPath)) {
       return res.status(400).json({ error: 'PRD not found. Upload PRD first.' });
@@ -156,41 +168,63 @@ app.post('/api/projects/:id/generate-tests', async (req, res) => {
     if (!baseUrl) baseUrl = 'https://example.com';
 
     const rules = `
-You are a senior QA. Output ONE valid JSON object ONLY (no prose, no backticks).
-Schema: {"tests":[{"id":"TC-001","title":"...","priority":"P1|P2|P3","steps":["Go to ${baseUrl}"],"expected":["Text '...' visible"]}]}
+Return EXACTLY one JSON object (no extra text) with this schema:
+{
+  "tests": [
+    {
+      "id": "TC-001",
+      "title": "short title",
+      "priority": "P1" | "P2" | "P3",
+      "steps": [
+        "Go to ${baseUrl}",
+        "Click '...'",
+        "Fill 'Label' with 'value'",
+        "Select 'Option' in 'Label'"
+      ],
+      "expected": [
+        "URL contains ...",
+        "Text '...' visible"
+      ]
+    }
+  ]
+}
 Constraints:
-- 3–8 concise E2E tests for Playwright.
-- Steps ONLY: Go to, Click 'Text', Fill 'Label' with 'value', Select 'Option' in 'Label'.
-- Expected ONLY: "URL contains ...", "Text '...' visible".
+- Generate 3 to 8 E2E tests grounded ONLY in the PRD.
+- Steps MUST be only from the allowed verbs above.
+- Expected MUST be only 'URL contains ...' or 'Text \"...\" visible'.
 `.trim();
 
     const prompt = `${rules}\n<PRD>\n${prdText}\n</PRD>`;
-    let raw = await callAI(prompt);
 
-    function stripFences(s='') {
-      return s.replace(/```[\s\S]*?```/g, '').trim();
-    }
-    function extractJson(s='') {
-      s = stripFences(s);
-      const a = s.indexOf('{'); const b = s.lastIndexOf('}');
+    // Ask OpenAI in JSON mode
+    const raw = await callAIJson(prompt);
+    if (!raw) return res.json({ tests: [] });
+
+    // raw should already be a pure JSON string thanks to response_format
+    let parsed;
+    try {
+      parsed = JSON.parse(raw);
+    } catch (e) {
+      // ultra-rare fallback: try to extract biggest { ... } block
+      const a = raw.indexOf('{'); const b = raw.lastIndexOf('}');
       if (a >= 0 && b > a) {
-        try { return JSON.parse(s.slice(a, b + 1)); } catch {}
+        try { parsed = JSON.parse(raw.slice(a, b+1)); } catch {}
       }
-      return null;
     }
 
-    let parsed = extractJson(raw);
     if (!parsed || !Array.isArray(parsed.tests)) {
       return res.json({ tests: [] });
     }
 
-    const tests = parsed.tests.map((t, i) => ({
-      id: t.id || `TC-${String(i+1).padStart(3, '0')}`,
-      title: t.title || `Test ${i+1}`,
-      priority: ['P1','P2','P3'].includes(t.priority) ? t.priority : 'P2',
-      steps: t.steps || [],
-      expected: t.expected || []
-    }));
+    const tests = parsed.tests
+      .filter(t => t && Array.isArray(t.steps) && Array.isArray(t.expected))
+      .map((t, i) => ({
+        id: t.id || `TC-${String(i + 1).padStart(3, '0')}`,
+        title: t.title || `Test ${i + 1}`,
+        priority: ['P1','P2','P3'].includes(t.priority) ? t.priority : 'P2',
+        steps: t.steps,
+        expected: t.expected
+      }));
 
     res.json({ tests });
   } catch (e) {
@@ -203,7 +237,7 @@ Constraints:
 app.post('/api/projects/:id/run-web', async (req, res) => {
   try {
     const { tests } = req.body;
-    const run = await runWebTests(tests);
+    const run = await runWebTests(tests || []);
     const projects = db.getProjects();
     const runs = db.getRuns();
     const proj = projects[req.params.id];
@@ -222,7 +256,7 @@ app.post('/api/projects/:id/run-web', async (req, res) => {
 
 app.post('/api/projects/:id/run-api', async (req, res) => {
   try {
-    const result = await runApiTests(req.body);
+    const result = await runApiTests(req.body || {});
     res.json(result);
   } catch(e) {
     console.error(e);
@@ -254,8 +288,8 @@ app.get('/api/viewer/:token', (req, res) => {
   res.json({ project: { id: project.id, name: project.name }, runs });
 });
 
-// -------- Listen --------
+/* ---------------- Listen ---------------- */
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, '0.0.0.0', () => {
-  console.log('QA Pilot server on', PORT, '— using OpenAI GPT-4o-mini');
+  console.log('QA Pilot server on', PORT, '— using OpenAI GPT-4o-mini (JSON mode)');
 });
