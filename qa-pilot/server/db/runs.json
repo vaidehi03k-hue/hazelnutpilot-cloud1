@@ -1,0 +1,73 @@
+{
+  "2025-08-24T16-10-05-376Z": {
+    "id": "2025-08-24T16-10-05-376Z",
+    "projectId": "4ce682f5-853c-43c0-a194-2585d10493eb",
+    "runId": "2025-08-24T16-10-05-376Z",
+    "runDir": "/runs/2025-08-24T16-10-05-376Z",
+    "passed": 0,
+    "failed": 2,
+    "total": 2,
+    "excelPath": "/runs/2025-08-24T16-10-05-376Z/Issues.xlsx",
+    "startedAt": 1756051807151,
+    "issues": [
+      {
+        "bugId": "BUG-1",
+        "title": "Fail: Login with valid credentials",
+        "severity": "Critical",
+        "priority": "P1",
+        "steps": "1. Go to https://www.saucedemo.com/\n2. Fill 'Username' with 'standard_user'\n3. Fill 'Password' with 'secret_sauce'\n4. Click 'Login'",
+        "expected": "URL contains '/dashboard' | Text 'Products' is visible",
+        "actual": "URL does not contain '/dashboard'",
+        "screenshot": "/runs/2025-08-24T16-10-05-376Z/TC-001/failure.png",
+        "video": "/runs/2025-08-24T16-10-05-376Z/aab63a033e42fdda99b366d1357d48e4.webm",
+        "trace": "",
+        "env": "chromium-headless",
+        "testId": "TC-001",
+        "ts": "2025-08-24T16:10:06.685Z"
+      },
+      {
+        "bugId": "BUG-2",
+        "title": "Fail: Logout and return to login page",
+        "severity": "Critical",
+        "priority": "P1",
+        "steps": "1. Go to https://www.saucedemo.com/\n2. Click the menu and Logout",
+        "expected": "URL contains '/login'",
+        "actual": "URL does not contain '/login'",
+        "screenshot": "/runs/2025-08-24T16-10-05-376Z/TC-002/failure.png",
+        "video": "/runs/2025-08-24T16-10-05-376Z/cfd56d647065679976bbb6d401630586.webm",
+        "trace": "",
+        "env": "chromium-headless",
+        "testId": "TC-002",
+        "ts": "2025-08-24T16:10:07.129Z"
+      }
+    ]
+  },
+  "2025-08-24T16-31-42-012Z": {
+    "id": "2025-08-24T16-31-42-012Z",
+    "projectId": "686bf0a8-9ac6-4bce-a181-b7e21025c9bb",
+    "runId": "2025-08-24T16-31-42-012Z",
+    "runDir": "/runs/2025-08-24T16-31-42-012Z",
+    "passed": 3,
+    "failed": 1,
+    "total": 4,
+    "excelPath": "/runs/2025-08-24T16-31-42-012Z/Issues.xlsx",
+    "startedAt": 1756053104194,
+    "issues": [
+      {
+        "bugId": "BUG-1",
+        "title": "Fail: Intentional fail",
+        "severity": "Critical",
+        "priority": "P1",
+        "steps": "",
+        "expected": "Text 'Welcome, Vaidehi' is visible",
+        "actual": "Text 'Welcome, Vaidehi' not visible",
+        "screenshot": "/runs/2025-08-24T16-31-42-012Z/TC4/failure.png",
+        "video": "/runs/2025-08-24T16-31-42-012Z/36e39edb05e086aecb6ef6ecd67c16e9.webm",
+        "trace": "",
+        "env": "chromium-headless",
+        "testId": "TC4",
+        "ts": "2025-08-24T16:31:44.168Z"
+      }
+    ]
+  }
+}

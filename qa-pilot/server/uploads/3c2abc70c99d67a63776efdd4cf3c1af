@@ -1,0 +1,16 @@
+# SauceDemo: Login and Logout
+
+As a shopper, I want to log in and out successfully.
+
+Acceptance Criteria:
+- Using username "standard_user" and password "secret_sauce" logs in.
+- After logout, I return to login page.
+
+Base URL: https://www.saucedemo.com/
+
+Gherkin Hints:
+Given the login page
+When I log in with username "standard_user" and password "secret_sauce"
+Then I see "Products"
+When I click the menu and logout
+Then I return to login page
