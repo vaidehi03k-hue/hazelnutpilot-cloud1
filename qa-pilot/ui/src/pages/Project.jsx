@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
+import { api, assetUrl } from "../api";
 import api from '../api'
 
 export default function Project(){
@@ -196,7 +197,7 @@ export default function Project(){
             {excelWeb && (
               <div>Web Issues:
                 {' '}<a className="text-blue-600 underline hover:text-blue-700 hover:underline-offset-4 transition"
-                      href={`http://localhost:4000${excelWeb}`} target="_blank" rel="noreferrer">
+                      href={assetUrl(excelWeb)} target="_blank" rel="noreferrer">
                       Download Issues.xlsx
                     </a>
               </div>
@@ -204,7 +205,7 @@ export default function Project(){
             {excelApi && (
               <div>API Issues:
                 {' '}<a className="text-blue-600 underline hover:text-blue-700 hover:underline-offset-4 transition"
-                      href={`http://localhost:4000${excelApi}`} target="_blank" rel="noreferrer">
+                      href={assetUrl(excelApi)} target="_blank" rel="noreferrer">
                       Download API_Issues.xlsx
                     </a>
               </div>
@@ -243,11 +244,11 @@ export default function Project(){
                   <td>{new Date(r.startedAt).toLocaleString()}</td>
                   <td className="whitespace-nowrap">
                     <a className="text-blue-600 underline hover:text-blue-700 hover:underline-offset-4 transition mr-2"
-                       href={`http://localhost:4000${r.excelPath}`} target="_blank" rel="noreferrer">
+                       href={assetUrl(r.excelPath)} target="_blank" rel="noreferrer">
                       Issues.xlsx
                     </a>
                     <a className="text-blue-600 underline hover:text-blue-700 hover:underline-offset-4 transition"
-                       href={`http://localhost:4000${r.runDir}`} target="_blank" rel="noreferrer">
+                       href={assetUrl(r.runDir)} target="_blank" rel="noreferrer">
                       Folder
                     </a>
                   </td>
